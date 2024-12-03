@@ -53,10 +53,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   
-  // while(WiFi.status() != WL_CONNECTED){
-  //   Serial.print(".");
-  //   delay(100);
-  // }
+  while(WiFi.status() != WL_CONNECTED){
+    Serial.print(".");
+    delay(100);
+  }
 
   Serial.println("\nConnecté au réseau WiFi");
   Serial.print("IP locale ESP32: ");
