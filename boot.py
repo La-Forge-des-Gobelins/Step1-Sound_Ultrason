@@ -24,7 +24,7 @@ WIFI_SSID = "Cudy-EFFC"
 WIFI_PASSWORD = "33954721"
 
 # Configuration WebSocket
-WEBSOCKET_URL = "ws://192.168.10.31:8080/step1"
+WEBSOCKET_URL = "ws://192.168.10.31:8080/step1-Four"
 
 # Configuration seuil
 SOUND_SPEED = 340
@@ -141,16 +141,16 @@ async def run_main_loop(ws):
 
                 if 0 < distance < 25:
                     print("Objet détecté à proximité!")
-                    ws.send("STEP 1 - Objet détecté")
+                    ws.send("Objet détecté")
                     
                 if sound_level > SOUND_THRESHOLD:
                     count += 1
                     print(f"Souffle détecté! ({count}/3)")
-                    ws.send("STEP 1 - Souffle détecté")
                     
                     if count >= 3:
                         if not fire_running:
                             fire_running = True
+                            ws.send("Souffle détecté")
                             asyncio.create_task(fire_effect(led_strip, NUM_LEDS))
                 
                 await asyncio.sleep_ms(50)
