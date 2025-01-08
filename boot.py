@@ -15,8 +15,8 @@ SOUND_SENSOR_PIN = ADC(Pin(34))
 SOUND_SENSOR_PIN.atten(ADC.ATTN_11DB)
 
 # Configuration du bandeau LED WS2812
-NUM_LEDS = 20  # Nombre de LEDs
-NEOPIXEL_PIN = Pin(13)  # GPIO connecté au bandeau LED
+NUM_LEDS = 20
+NEOPIXEL_PIN = Pin(13)
 led_strip = NeoPixel(NEOPIXEL_PIN, NUM_LEDS)
 
 # Configuration WiFi
@@ -36,6 +36,12 @@ last_send_time = 0
 # Flag pour contrôler l'effet de feu
 fire_running = False
 
+# Configuration du debug
+DEBUG = False  # Mettre à True pour voir tous les messages de debug
+
+def debug_print(message):
+    if DEBUG:
+        print("debug")
 
 async def connect_wifi():
     wlan = network.WLAN(network.STA_IF)
@@ -60,7 +66,6 @@ async def connect_wifi():
         print('Échec de connexion WiFi')
         return False
 
-
 def measure_distance():
     TRIG_PIN.value(0)
     time.sleep_us(2)
@@ -69,119 +74,118 @@ def measure_distance():
     TRIG_PIN.value(0)
 
     duration = time_pulse_us(ECHO_PIN, 1)
+    if duration < 0:
+        return float('inf')
     distance_cm = (duration * SOUND_SPEED) / (2 * 10000)
     return distance_cm
 
 
-def send_data(ws, distance, sound_level):
-    try:
-        data = {
-            "distance": distance,
-            "sound_level": sound_level,
-            "timestamp": time.time()
-        }
-        message = json.dumps(data)
-        if ws.send(message):
-            print("Données envoyées:", message)
-        else:
-            print("Erreur d'envoi du message WebSocket")
-    except Exception as e:
-        print("Erreur lors de l'envoi:", e)
-
-
 async def fire_effect(strip, num_leds):
-    """
-    Simule un effet de feu rouge/orange sur un bandeau LED.
-    :param strip: Instance de NeoPixel.
-    :param num_leds: Nombre de LEDs dans le bandeau.
-    """
     global fire_running
     while fire_running:
         for i in range(num_leds):
-            # Génération d'une couleur aléatoire dans les tons rouge/orange
-            r = random.randint(180, 255)  # Rouge intense
-            g = random.randint(50, 100)  # Orange
-            b = 0  # Pas de bleu pour éviter toute nuance jaune ou autre
-
-            # Simuler un crépitement en éteignant aléatoirement certaines LEDs
-            if random.random() > 0.8:  # 20% de chance de simuler un crépitement
+            r = random.randint(180, 255)
+            g = random.randint(50, 100)
+            b = 0
+            if random.random() > 0.8:
                 r = g = b = 0
-
             strip[i] = (r, g, b)
-
-        # Mise à jour du bandeau
         strip.write()
-        await asyncio.sleep(0.05)  # Pause pour créer un effet de crépitement
+        await asyncio.sleep(0.05)
 
+async def listen_websocket(ws):
+    last_message_time = 0
+    WEBSOCKET_CHECK_INTERVAL = 100  # Vérifier les messages toutes les 100ms
+    
+    while True:
+        try:
+            current_time = time.ticks_ms()
+            if time.ticks_diff(current_time, last_message_time) >= WEBSOCKET_CHECK_INTERVAL:
+                msg = ws.receive()
+                last_message_time = current_time
+                
+                if msg and msg != "ping":  # N'afficher que les messages non-ping
+                    print(f"Message reçu: {msg}")
+                
+                if msg == "ping":
+                    ws.send("Four - pong")
+                    
+        except Exception as e:
+            print(f"WebSocket error: {e}")
+            break
+            
+        await asyncio.sleep_ms(WEBSOCKET_CHECK_INTERVAL)
 
-async def main():
+async def run_main_loop(ws):
     global last_send_time, fire_running
     gc.collect()
     count = 0
-
-    if not await connect_wifi():
-        print("Impossible de continuer sans connexion WiFi")
-        return
-
-    ws = WebSocketClient(WEBSOCKET_URL)
 
     try:
         if ws.connect():
             print("Connecté au serveur WebSocket")
             ws.socket.setblocking(False)
             
-            # Envoi du message de connexion
             connect_message = "STEP 1 - ESP32 connecté"
-            if ws.send(connect_message):
-                print(f"Message de connexion envoyé: {connect_message}")
+            ws.send(connect_message)
+            print("ESP32 connecté et prêt")
 
             while True:
                 distance = measure_distance()
                 sound_level = SOUND_SENSOR_PIN.read()
                 
-                if time.ticks_ms() - last_send_time > SEND_INTERVAL:
-                    # send_data(ws, distance, sound_level)
-                    print(distance, sound_level)
-                    last_send_time = time.ticks_ms()
+                current_time = time.ticks_ms()
+                if time.ticks_diff(current_time, last_send_time) > SEND_INTERVAL:
+                    debug_print(f"Distance: {distance}cm, Son: {sound_level}")
+                    last_send_time = current_time
 
                 if 0 < distance < 25:
                     print("Objet détecté à proximité!")
                     ws.send("STEP 1 - Objet détecté")
                     
-
                 if sound_level > SOUND_THRESHOLD:
-                    count = count + 1
-                    print("Souffle détecté!", sound_level)
+                    count += 1
+                    print(f"Souffle détecté! ({count}/3)")
                     ws.send("STEP 1 - Souffle détecté")
                     
-                    if count == 3:
-                        # Démarrer l'effet de feu en arrière-plan
+                    if count >= 3:
                         if not fire_running:
                             fire_running = True
                             asyncio.create_task(fire_effect(led_strip, NUM_LEDS))
+                
+                await asyncio.sleep_ms(50)
 
-                await asyncio.sleep(0.1)
-
-    except KeyboardInterrupt:
-        print("Arrêt demandé par l'utilisateur")
-        # Éteindre le bandeau à la fin
-        for i in range(NUM_LEDS):
-            led_strip[i] = (0, 0, 0)
-        led_strip.write()
     except Exception as e:
-        print(f"Erreur: {e}")
+        print(f"Error in main loop: {e}")
+
+async def main():    
+    if not await connect_wifi():
+        print("Impossible de continuer sans connexion WiFi")
+        return
+
+    ws = WebSocketClient(WEBSOCKET_URL)
+    
+    if not ws:
+        print("Failed to start - no connection")
+        return
+    
+    try:
+        await asyncio.gather(
+            run_main_loop(ws),
+            listen_websocket(ws)
+        )
+    except Exception as e:
+        print(f"Error: {e}")
     finally:
         if ws:
             ws.close()
             print("Connexion WebSocket fermée")
-        # Éteindre le bandeau à la fin
         for i in range(NUM_LEDS):
             led_strip[i] = (0, 0, 0)
         led_strip.write()
 
-
-# Lancer le programme principal avec uasyncio
-try:
-    asyncio.run(main())
-finally:
-    asyncio.new_event_loop()
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Programme interrompu par l'utilisateur")
