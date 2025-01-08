@@ -15,7 +15,7 @@ SOUND_SENSOR_PIN = ADC(Pin(34))
 SOUND_SENSOR_PIN.atten(ADC.ATTN_11DB)
 
 # Configuration du bandeau LED WS2812
-NUM_LEDS = 20
+NUM_LEDS = 50
 NEOPIXEL_PIN = Pin(13)
 led_strip = NeoPixel(NEOPIXEL_PIN, NUM_LEDS)
 
@@ -29,7 +29,7 @@ WEBSOCKET_URL = "ws://192.168.10.31:8080/step1-Four"
 # Configuration seuil
 SOUND_SPEED = 340
 TRIG_PULSE_DURATION_US = 10
-SOUND_THRESHOLD = 900
+SOUND_THRESHOLD = 300
 SEND_INTERVAL = 1000
 last_send_time = 0
 
@@ -126,7 +126,7 @@ async def run_main_loop(ws):
             print("Connecté au serveur WebSocket")
             ws.socket.setblocking(False)
             
-            connect_message = "STEP 1 - ESP32 connecté"
+            connect_message = "connect"
             ws.send(connect_message)
             print("ESP32 connecté et prêt")
 
@@ -147,7 +147,7 @@ async def run_main_loop(ws):
                     count += 1
                     print(f"Souffle détecté! ({count}/3)")
                     
-                    if count >= 3:
+                    if count >= 1:
                         if not fire_running:
                             fire_running = True
                             ws.send("Souffle détecté")
