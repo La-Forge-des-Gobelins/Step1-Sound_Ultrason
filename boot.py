@@ -34,6 +34,7 @@ SEND_INTERVAL = 1000
 last_send_time = 0
 
 previous_distance = 0
+previous_distance_epee = 0
 
 # Flag pour contrôler l'effet de feu
 fire_running = False
@@ -41,9 +42,6 @@ fire_running = False
 # Configuration du debug
 DEBUG = False  # Mettre à True pour voir tous les messages de debug
 
-def debug_print(message):
-    if DEBUG:
-        print("debug")
 
 async def connect_wifi():
     wlan = network.WLAN(network.STA_IF)
@@ -96,7 +94,7 @@ async def fire_effect(strip, num_leds):
         await asyncio.sleep(0.05)
 
 async def listen_websocket(ws):
-    global last_send_time, fire_running, previous_distance
+    global last_send_time, fire_running, previous_distance, previous_distance_epee
     last_message_time = 0
     WEBSOCKET_CHECK_INTERVAL = 100  # Vérifier les messages toutes les 100ms
     
@@ -130,7 +128,7 @@ async def listen_websocket(ws):
         await asyncio.sleep_ms(WEBSOCKET_CHECK_INTERVAL)
 
 async def run_main_loop(ws):
-    global last_send_time, fire_running, previous_distance
+    global last_send_time, fire_running, previous_distance, previous_distance_epee
     gc.collect()
     count = 0
 
@@ -147,16 +145,19 @@ async def run_main_loop(ws):
                 
                 current_time = time.ticks_ms()
                 if time.ticks_diff(current_time, last_send_time) > SEND_INTERVAL:
-                    debug_print(f"Distance: {distance}cm, Son: {sound_level}")
                     last_send_time = current_time
 
-                if 2 < distance < 18:
-                    if abs(distance - previous_distance) > 0.2:
+                if 2 < distance < 17.4:
+                    if abs(distance - previous_distance) > 0.7:
                         print("Metal détecté", distance)
                         ws.send("Metal détecté")
                     previous_distance = distance
                 elif 17.5 < distance < 22:
-                    print("Epée détecté", distance)
+                    if abs(distance - previous_distance_epee) > 0.7:
+                        print("Epee détecté", distance)
+                        ws.send("Epee détectée")
+                    previous_distance_epee = distance
+                    
                     
                 if sound_level > SOUND_THRESHOLD:
                     count += 1
